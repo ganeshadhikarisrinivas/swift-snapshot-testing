@@ -38,7 +38,7 @@
         do {
           if pretty, #available(iOS 11.0, macOS 10.13, tvOS 11.0, watchOS 4.0, *) {
             body =
-              try request.httpBody
+              try request.data
               .map { try JSONSerialization.jsonObject(with: $0, options: []) }
               .map {
                 try JSONSerialization.data(
@@ -51,7 +51,7 @@
           }
         } catch {
           body =
-            request.httpBody
+            request.data
             .map { ["\n\(String(decoding: $0, as: UTF8.self))"] }
             ?? []
         }
@@ -96,7 +96,7 @@
       }
 
       // Body
-      if let httpBodyData = request.httpBody,
+      if let httpBodyData = request.data,
         let httpBody = String(data: httpBodyData, encoding: .utf8)
       {
         var escapedBody = httpBody.replacingOccurrences(of: "\\\"", with: "\\\\\"")
@@ -125,6 +125,31 @@
       components?.queryItems = sortedQueryItems
 
       return components?.url
+    }
+  }
+
+  extension URLRequest {
+    fileprivate var data: Data? {
+      httpBody ?? httpBodyStream.map { Data(reading: $0, withBufferSize: 1024) }
+    }
+  }
+
+  extension Data {
+    fileprivate init(reading stream: InputStream, withBufferSize bufferSize: UInt = 1024) {
+      self.init()
+
+      stream.open()
+      defer { stream.close() }
+
+      let bufferSize = Int(bufferSize)
+      let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
+      defer { buffer.deallocate() }
+
+      while stream.hasBytesAvailable {
+        let read = stream.read(buffer, maxLength: bufferSize)
+        guard read > 0 else { return }
+        self.append(buffer, count: read)
+      }
     }
   }
 #endif
